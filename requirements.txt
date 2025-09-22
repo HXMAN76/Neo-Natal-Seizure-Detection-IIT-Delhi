@@ -1,0 +1,15 @@
+# Core dependencies for Neo-Natal Seizure Detection
+numpy
+pandas
+tensorflow
+scikit-learn
+matplotlib
+seaborn
+
+# Signal processing for EEG data (preprocess.ipynb)
+mne
+scipy
+
+# Jupyter notebook support
+jupyter
+ipykernel
