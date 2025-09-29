@@ -112,6 +112,13 @@ This model is designed for:
 - Continuous EEG monitoring
 - Research in neonatal neurology
 
+
+## Project Team
+- [Raghav N](https://github.com/Rag-795)
+- [Hari Heman V K](https://github.com/HXMAN76)
+- [Mathivanan S](https://github.com/Rag-795)
+- [Rashwanth Ram](https://github.com/Rag-795)
+
 ## Citation
 
 If you use this code in your research, please cite:
