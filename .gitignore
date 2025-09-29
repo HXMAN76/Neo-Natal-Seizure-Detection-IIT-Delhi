@@ -1,16 +1,9 @@
-# Dataset files
+# Dataset files - large data files should not be tracked
 dataset/
-complete_preprocessed_dataset_shuffled_with_ica.csv
-complete_preprocessed_dataset_with_ica.csv
 *.csv
 *.edf
 
-# Python virtual environment
-.venv/
-venv/
-env/
-
-# Trained models and weights
+# Model files - large trained models should not be tracked
 *.h5
 *.hdf5
 *.pkl
@@ -22,15 +15,13 @@ env/
 saved_model/
 checkpoints/
 
-# TensorFlow/Keras specific
-logs/
-tensorboard_logs/
-*.tflite
-*.tfevent*
-
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints/
-*/.ipynb_checkpoints/*
+# Analysis outputs - generated files should not be tracked
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.txt
+*.log
 
 # Python cache and compiled files
 __pycache__/
@@ -54,6 +45,23 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# TensorFlow/Keras specific
+logs/
+tensorboard_logs/
+*.tflite
+*.tfevent*
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
 
 # IDE and editor files
 .vscode/

@@ -1,15 +1,47 @@
-# Core dependencies for Neo-Natal Seizure Detection
-numpy
-pandas
-tensorflow
-scikit-learn
-matplotlib
-seaborn
+# Core dependencies for Neo-Natal Seizure Detection# Core dependencies for Neo-Natal Seizure Detection
 
-# Signal processing for EEG data (preprocess.ipynb)
-mne
-scipy
+numpy>=1.21.0numpy>=1.21.0
 
-# Jupyter notebook support
-jupyter
-ipykernel
+pandas>=1.3.0pandas>=1.3.0
+
+tensorflow>=2.8.0tensorflow>=2.8.0
+
+scikit-learn>=1.0.0scikit-learn>=1.0.0
+
+matplotlib>=3.5.0matplotlib>=3.5.0
+
+seaborn>=0.11.0seaborn>=0.11.0
+
+
+
+# Signal processing for EEG data (preprocess.ipynb)# Signal processing for EEG data (preprocess.ipynb)
+
+mne>=1.0.0mne>=1.0.0
+
+scipy>=1.7.0scipy>=1.7.0
+
+
+
+# Statistical analysis and time series# Statistical analysis and time series
+
+statsmodels>=0.13.0  # For ADF test and time series analysis (check.ipynb)statsmodels>=0.13.0  # For ADF test and time series analysis (check.ipynb)
+
+
+
+# Machine learning utilities# Machine learning utilities
+
+imbalanced-learn>=0.8.0  # For SMOTE oversampling (check.ipynb)imbalanced-learn>=0.8.0  # For SMOTE oversampling (check.ipynb)
+
+
+
+# Jupyter notebook support# Jupyter notebook support
+
+jupyter>=1.0.0jupyter>=1.0.0
+
+ipykernel>=6.0.0ipykernel>=6.0.0
+
+
+
+# Note: The following are part of Python's standard library and don't need installation:# Note: The following are part of Python's standard library and don't need installation:
+
+# warnings, pathlib, os, glob, collections (Counter)# warnings, pathlib, os, glob, collections (Counter)

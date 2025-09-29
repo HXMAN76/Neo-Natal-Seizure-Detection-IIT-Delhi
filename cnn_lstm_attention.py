@@ -22,6 +22,22 @@ from collections import Counter
 np.random.seed(42)
 tf.random.set_seed(42)
 
+
+# List available GPUs
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    try:
+        # Enable dynamic memory growth (avoids OOM errors)
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        print(f"✅ GPU detected and activated: {gpus}")
+    except RuntimeError as e:
+        print(f"⚠️ GPU setup error: {e}")
+else:
+    print("❌ No GPU found, running on CPU")
+
+
+
 print("🧠 Enhanced Neonatal Seizure Detection: CNN+LSTM+Attention Implementation")
 print("="*80)
 
@@ -29,7 +45,7 @@ print("="*80)
 # 1. DATA LOADING AND PREPROCESSING
 # ============================================================================
 
-def load_and_preprocess_data(csv_file='complete_preprocessed_dataset_shuffled_with_ica.csv'):
+def load_and_preprocess_data(csv_file='temporally_stabilized_dataset.csv'):
     """
     Load preprocessed EEG data and prepare for enhanced CNN+LSTM+Attention model
     
@@ -119,16 +135,22 @@ def channel_attention_eca(inputs, kernel_size=3, name='eca_block'):
     Efficient Channel Attention (ECA) for adaptive channel weighting
     Focuses on important frequency bands in EEG
     """
+    # Get number of channels and adapt kernel size
+    num_channels = inputs.shape[-1]
+    adaptive_kernel_size = min(kernel_size, num_channels)
+    if adaptive_kernel_size % 2 == 0:
+        adaptive_kernel_size += 1  # Ensure odd kernel size
+    
     # Global average pooling across time dimension using Lambda layer
     avg_pool = Lambda(lambda x: tf.reduce_mean(x, axis=1, keepdims=True), name=f'{name}_avgpool')(inputs)
     
     # Transpose to shape [batch, channels, 1] using Permute
     transposed = Permute((2, 1), name=f'{name}_permute1')(avg_pool)
     
-    # 1D convolution for efficient channel attention
+    # 1D convolution for efficient channel attention with adaptive kernel size
     conv = Conv1D(
         filters=1, 
-        kernel_size=kernel_size,
+        kernel_size=adaptive_kernel_size,
         padding='same',
         activation='sigmoid',
         name=f'{name}_conv'
@@ -152,7 +174,6 @@ def temporal_attention(inputs, num_heads=4, query_dim=None, key_dim=None, name='
         key_dim = inputs.shape[-1]
     
     # Define dimensions
-    time_steps = inputs.shape[1]
     hidden_dim = inputs.shape[2]
     
     # Create query, key, value projections
@@ -160,23 +181,20 @@ def temporal_attention(inputs, num_heads=4, query_dim=None, key_dim=None, name='
     key = Dense(key_dim, name=f'{name}_key')(inputs)
     value = Dense(hidden_dim, name=f'{name}_value')(inputs)
     
-    # For simplicity, use a single head attention instead of multi-head
-    # This avoids complex tensor operations that are difficult in Functional API
+    # Proper scaled dot-product attention
+    def scaled_dot_product_attention(tensors):
+        q, k, v = tensors
+        # Calculate attention scores: Q * K^T / sqrt(d_k)
+        scores = tf.matmul(q, k, transpose_b=True)
+        dk = tf.cast(tf.shape(k)[-1], tf.float32)
+        scaled_scores = scores / tf.math.sqrt(dk)
+        # Apply softmax along the last dimension (key dimension)
+        attention_weights = tf.nn.softmax(scaled_scores, axis=-1)
+        # Apply weights to values
+        output = tf.matmul(attention_weights, v)
+        return output
     
-    # Calculate attention scores using Dot product
-    # Reshape for matrix multiplication: (batch, time, dim) -> (batch, time, dim)
-    attention_scores = Dot(axes=[2, 2], name=f'{name}_scores')([query, key])
-    
-    # Apply softmax
-    attention_weights = Activation('softmax', name=f'{name}_weights')(attention_scores)
-    
-    # Apply attention weights to values
-    # Use Lambda layer for more complex operations
-    def apply_attention(tensors):
-        weights, values = tensors
-        return tf.matmul(weights, values)
-    
-    context = Lambda(apply_attention, name=f'{name}_context')([attention_weights, value])
+    context = Lambda(scaled_dot_product_attention, name=f'{name}_context')([query, key, value])
     
     # Final projection
     output = Dense(hidden_dim, name=f'{name}_output')(context)
@@ -211,30 +229,35 @@ def spatial_temporal_attention(inputs, spatial_heads=4, temporal_heads=4, name='
 
 def multi_head_self_attention(inputs, heads=8, d_model=256, d_ff=512, name='self_attention'):
     """
-    Simplified self-attention for global pattern recognition
+    Simplified self-attention for global pattern recognition after GlobalMaxPooling
     """
-    # Since we're dealing with 1D vector after GlobalMaxPooling, simplify the attention
-    
     # Project to query, key, value
     query = Dense(d_model, name=f'{name}_query')(inputs)
     key = Dense(d_model, name=f'{name}_key')(inputs)
     value = Dense(d_model, name=f'{name}_value')(inputs)
     
-    # Simple attention mechanism for 1D vectors
-    # Calculate attention scores using dot product
-    scores = Dot(axes=1, name=f'{name}_scores')([query, key])
+    # Self-attention mechanism for 1D vectors (after GlobalMaxPooling)
+    def self_attention_calc(tensors):
+        q, k, v = tensors
+        # For 1D vectors, create pseudo-sequence dimension for attention
+        q_expanded = tf.expand_dims(q, axis=1)  # (batch, 1, d_model)
+        k_expanded = tf.expand_dims(k, axis=1)  # (batch, 1, d_model)
+        v_expanded = tf.expand_dims(v, axis=1)  # (batch, 1, d_model)
+        
+        # Calculate attention scores
+        scores = tf.matmul(q_expanded, k_expanded, transpose_b=True)  # (batch, 1, 1)
+        scores = scores / tf.math.sqrt(tf.cast(d_model, tf.float32))
+        weights = tf.nn.softmax(scores, axis=-1)
+        
+        # Apply attention weights
+        output = tf.matmul(weights, v_expanded)  # (batch, 1, d_model)
+        
+        # Squeeze back to 1D
+        output = tf.squeeze(output, axis=1)  # (batch, d_model)
+        
+        return output
     
-    # Scale the scores
-    def scale_scores(x):
-        return x / tf.math.sqrt(tf.cast(d_model, tf.float32))
-    
-    scaled_scores = Lambda(scale_scores, name=f'{name}_scale')(scores)
-    
-    # Apply softmax to get attention weights
-    weights = Activation('softmax', name=f'{name}_weights')(scaled_scores)
-    
-    # Apply attention weights to values
-    context = Multiply(name=f'{name}_context')([weights, value])
+    context = Lambda(self_attention_calc, name=f'{name}_context')([query, key, value])
     
     # Feed-forward network
     ffn_output = Dense(d_ff, activation='relu', name=f'{name}_ffn1')(context)
@@ -253,22 +276,25 @@ def attention_weight_aggregation(inputs, context, context_dim=256, attention_hea
     inputs_proj = Dense(context_dim, name=f'{name}_input_proj')(inputs)
     context_proj = Dense(context_dim, name=f'{name}_context_proj')(context)
     
-    # Calculate attention scores using Dot layer
-    scores = Dot(axes=1, name=f'{name}_scores')([inputs_proj, context_proj])
+    # Calculate compatibility score using element-wise operations
+    def attention_score(tensors):
+        inp, ctx = tensors
+        # Concatenate features and learn attention weight
+        combined = tf.concat([inp, ctx], axis=-1)
+        return combined
     
-    # Scale the scores
-    def scale_scores(x):
-        return x / tf.math.sqrt(tf.cast(context_dim, tf.float32))
+    combined_features = Lambda(attention_score, name=f'{name}_combine_features')([inputs_proj, context_proj])
     
-    scaled_scores = Lambda(scale_scores, name=f'{name}_scale')(scores)
+    # Learn attention weight from combined features
+    weights = Dense(1, activation='sigmoid', name=f'{name}_weight_learn')(combined_features)
     
-    # Apply softmax
-    weights = Activation('softmax', name=f'{name}_weights')(scaled_scores)
-    
-    # Weight inputs by attention scores
+    # Apply attention weight to inputs
     weighted = Multiply(name=f'{name}_multiply')([inputs, weights])
     
-    return weighted
+    # Combine weighted inputs with original context information
+    combined_output = Add(name=f'{name}_combine')([weighted, inputs])
+    
+    return combined_output
 
 # ============================================================================
 # 3. MODEL ARCHITECTURE
@@ -329,15 +355,22 @@ def create_enhanced_model(input_shape=(320, 19), num_classes=2):
     x = ReLU(name='relu_dense_1')(x)
     x = Dense(units=64, name='dense_2')(x)
     x = ReLU(name='relu_dense_2')(x)
-    outputs = Dense(units=num_classes, activation='softmax', name='output')(x)
+    
+    # Binary classification output (sigmoid for binary, softmax for multi-class)
+    if num_classes == 2:
+        outputs = Dense(units=1, activation='sigmoid', name='output')(x)
+        loss_function = 'binary_crossentropy'
+    else:
+        outputs = Dense(units=num_classes, activation='softmax', name='output')(x)
+        loss_function = 'sparse_categorical_crossentropy'
     
     # Create model
     model = Model(inputs=inputs, outputs=outputs, name='EnhancedCNN_LSTM_Attention')
     
-    # Compile model
+    # Compile model with appropriate loss function
     model.compile(
         optimizer=Adam(learning_rate=0.001),
-        loss='sparse_categorical_crossentropy',
+        loss=loss_function,
         metrics=['accuracy']
     )
     
@@ -422,7 +455,14 @@ def evaluate_model(model, X_test, y_test, class_names=['Non-Seizure', 'Seizure']
     
     # Predictions
     y_pred_proba = model.predict(X_test)
-    y_pred = np.argmax(y_pred_proba, axis=1)
+    
+    # Handle binary vs multi-class prediction
+    if y_pred_proba.shape[1] == 1:  # Binary classification
+        y_pred = (y_pred_proba > 0.5).astype(int).flatten()
+        y_pred_proba_positive = y_pred_proba.flatten()
+    else:  # Multi-class classification
+        y_pred = np.argmax(y_pred_proba, axis=1)
+        y_pred_proba_positive = y_pred_proba[:, 1]
     
     # Classification Report
     print("\n📊 Classification Report:")
@@ -439,12 +479,13 @@ def evaluate_model(model, X_test, y_test, class_names=['Non-Seizure', 'Seizure']
     plt.show()
     
     # ROC AUC Score
+    auc_score = None
     if len(np.unique(y_test)) > 1:
-        auc_score = roc_auc_score(y_test, y_pred_proba[:, 1])
+        auc_score = roc_auc_score(y_test, y_pred_proba_positive)
         print(f"\n🎯 ROC AUC Score: {auc_score:.4f}")
         
         # ROC Curve
-        fpr, tpr, _ = roc_curve(y_test, y_pred_proba[:, 1])
+        fpr, tpr, _ = roc_curve(y_test, y_pred_proba_positive)
         plt.figure(figsize=(8, 6))
         plt.plot(fpr, tpr, linewidth=2, label=f'ROC Curve (AUC = {auc_score:.4f})')
         plt.plot([0, 1], [0, 1], 'k--', linewidth=1)
@@ -458,7 +499,7 @@ def evaluate_model(model, X_test, y_test, class_names=['Non-Seizure', 'Seizure']
     return {
         'predictions': y_pred,
         'probabilities': y_pred_proba,
-        'auc_score': auc_score if len(np.unique(y_test)) > 1 else None
+        'auc_score': auc_score
     }
 
 # ============================================================================
@@ -623,7 +664,7 @@ def main():
         X_train, y_train,
         validation_split=0.2,  # Use 20% of training data for validation
         epochs=100,
-        batch_size=32,
+        batch_size=16,
         callbacks=callbacks,
         verbose=1
     )
